@@ -4,15 +4,14 @@ using Microsoft.Azure.Cosmos;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddBlazorBootstrap();
 
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddSingleton<CosmosClient>((_) =>
     {
         // <create_client>
-        CosmosClient client = new(
-            accountEndpoint: builder.Configuration["AZURE_COSMOS_DB_NOSQL_ENDPOINT"]!,
-            tokenCredential: new DefaultAzureCredential()
+        CosmosClient client = new("AccountEndpoint=https://common-weu-voc-dev-cosno001.documents.azure.com:443/;AccountKey=QGvwJaTVzgkMktL4KaAhmrwWE4mYAcX0hmTxGiSqy5lnCCkCZnoWymOTa1ET2XXUIvDjUHAy6dR4ACDbXKFyCQ==;"
         );
         // </create_client>
         return client;

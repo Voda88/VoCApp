@@ -1,0 +1,161 @@
+@page "/test"
+
+@inject CosmosClient client
+@using System.Text
+
+@foreach (var topic in topics)
+{
+    <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px;">
+        <h3>@topic.Name</h3>
+        <p style="margin-bottom: 0; padding-bottom: 5px; border-bottom: 1px solid #ddd;">Average Score: @topic.AggregateScore</p>
+        <div style="padding-top: 10px;">
+            <p>Score 1 count: @topic.Score1Count</p>
+            <p>Score 2 count: @topic.Score2Count</p>
+            <p>Score 3 count: @topic.Score3Count</p>
+            <p>Score 4 count: @topic.Score4Count</p>
+            <p>Score 5 count: @topic.Score5Count</p>
+        </div>
+        <div style="padding-top: 10px; border-top: 1px solid #ddd;">
+            <p><strong>Related Sentences:</strong></p>
+            @foreach (var comment in topic.Comments)
+            {
+                foreach (var sentence in comment.RelatedSentences)
+                {
+                    <p>@sentence</p>
+                }
+            }
+        </div>
+    </div>
+}
+
+
+
+<footer class="fixed-bottom bg-secondary bg-body-secondary border">
+    <small class="px-5 fw-light fst-italic">
+        <strong>
+            ENDPOINT:
+        </strong>
+        @client.Endpoint
+    </small>
+</footer>
+
+
+@code {
+    private PieChart pieChart = default!;
+    private PieChartOptions pieChartOptions = default!;
+    private ChartData chartData = default!;
+    private string[]? backgroundColors;
+
+    private Dictionary<string, PieChart> pieChartRefs = new Dictionary<string, PieChart>();
+
+    private int datasetsCount = 0;
+    private int dataLabelsCount = 0;
+
+    private Random random = new();
+
+    private List<Topic> topics = new List<Topic>();
+
+    protected override void OnInitialized()
+    {
+        GenerateQueryDataAsync();
+        backgroundColors = ColorBuilder.CategoricalTwelveColors;
+
+        pieChartOptions = new();
+        pieChartOptions.Responsive = true;
+
+        pieChartOptions.Plugins.Legend.Position = "right";
+    }
+
+/*
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await pieChart.InitializeAsync(chartData, pieChartOptions);
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    #region Data Preparation
+
+    private List<IChartDataset> GetDefaultDataSets(Topic topic)
+    {
+        var datasets = new List<IChartDataset>
+        {
+            new PieChartDataset
+            {
+                Label = topic.Name,
+                Data = new List<double> { topic.Score1Count, topic.Score2Count, topic.Score3Count, topic.Score4Count, topic.Score5Count },
+                BackgroundColor = GetRandomBackgroundColors()
+            }
+        };
+
+        return datasets;
+    }
+
+
+    private List<string> GetRandomBackgroundColors()
+    {
+        var colors = new List<string>();
+        for (var index = 0; index < dataLabelsCount; index++)
+        {
+            colors.Add(backgroundColors![index]);
+        }
+
+        return colors;
+    }
+
+    private string GetNextDataBackgrounfColor() => backgroundColors![dataLabelsCount];
+
+    #endregion  Data Preparation
+
+    private void AssignPieChartRef(PieChart pieChartRef, string key)
+    {
+        if (pieChartRef != null)
+        {
+            pieChartRefs[key] = pieChartRef;
+        }
+    }
+    */
+    private async void GenerateQueryDataAsync()
+    {
+
+        // <get_database>
+        Database database = client.GetDatabase("VoC");
+        // </get_database>
+        database = await database.ReadAsync();
+        // <get_container>
+        Container topicContainer = database.GetContainer("topics");
+        // </get_container>
+        topicContainer = await topicContainer.ReadContainerAsync();   
+        Container commentContainer = database.GetContainer("comments");
+        commentContainer = await commentContainer.ReadContainerAsync();
+
+        // <query_items>
+        var query = new QueryDefinition(
+            query: "SELECT * FROM topics t"
+        );
+
+        using FeedIterator<Topic> feed = topicContainer.GetItemQueryIterator<Topic>(
+            queryDefinition: query
+        );
+
+        // <parse_results>
+        while (feed.HasMoreResults)
+        {
+            FeedResponse<Topic> response = await feed.ReadNextAsync();
+            foreach (Topic topic in response)
+            {
+                
+                /*string firstCommentId = topic.CommentIds.First();
+                ItemResponse<Comment> commentResponse = await commentContainer.ReadItemAsync<Comment>(
+                    id: firstCommentId,
+                    partitionKey: new PartitionKey(firstCommentId)
+                );*/
+                //topic.RelatedSentences = response.RelatedSentences;
+                topics.Add(topic);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+}
