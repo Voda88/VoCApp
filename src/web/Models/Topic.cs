@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+
 namespace Cosmos.Samples.NoSQL.Quickstart.Web.Models;
 
 public class Topic
 {
-    public string id { get; private set; }
+    [JsonProperty("id")]
     public string Name{ get; set;}
     public double AggregateScore { get; set; }
     public int Score1Count { get; set; }
@@ -12,25 +14,13 @@ public class Topic
     public int Score3Count { get; set; }
     public int Score4Count { get; set; }
     public int Score5Count { get; set; }
+    public int Score6Count { get; set; }
+    public int Score7Count { get; set; }
+    public int Score8Count { get; set; }
+    public int Score9Count { get; set; }
+    public int Score10Count { get; set; }
     public int Count {get; set;}
-    public List<CommentInfo> Comments { get; set; }
     public List<float> Embeddings { get; set; }
-
-    public Topic()
-    {
-        id = Guid.NewGuid().ToString(); // Generates a unique identifier
-        Comments = new List<CommentInfo>();
-    }
-     public void AddComment(string commentId, List<string> relatedSentences)
-    {
-        Comments.Add(new CommentInfo { CommentId = commentId, RelatedSentences = relatedSentences });
-    }
-
-    public class CommentInfo
-    {
-        public string CommentId { get; set; }
-        public List<string> RelatedSentences { get; set; }
-    }
 
     public void IncrementScoreCount(int score)
     {
@@ -50,6 +40,21 @@ public class Topic
                 break;
             case 5:
                 Score5Count++;
+                break;
+            case 6:
+                Score6Count++;
+                break;
+            case 7:
+                Score7Count++;
+                break;
+            case 8:
+                Score8Count++;
+                break;
+            case 9:
+                Score9Count++;
+                break;
+            case 10:
+                Score10Count++;
                 break;
         }
     }

@@ -1,0 +1,246 @@
+@page "/TopicDetails/{TopicName}"
+@inject CosmosClient client
+
+<title>@TopicName</title>
+
+<LineChart @ref="lineChart" Width="800" Class="mb-4"/>
+<PieChart @ref="pieChart" Width="500" Class="mb-5" />
+<p>@currentMonth.Year - @currentMonth.Month</p>
+<button @onclick="() => ChangeMonth(-1)">Previous Month</button>
+<button @onclick="() => ChangeMonth(1)">Next Month</button>
+
+@foreach (var comment in comments)
+{
+    <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between;">
+            <div style="flex-grow: 1; margin-right: 10px;">
+                <p><strong>Date:</strong> @comment.Startdate.ToString("yyyy-MM-dd HH:mm:ss")</p>
+                @foreach (var sentence in comment.RelatedSentences)
+                {
+                    <p>@sentence.FieldName: @sentence.Content</p>
+                }
+            </div>
+            <div style="flex-basis: 100px;">
+                <p><strong>Score:</strong> @comment.Score</p>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    [Parameter]
+    public string TopicName { get; set; }
+    private List<Comment> comments = new List<Comment>();
+
+    //linechart stuff
+    private LineChart lineChart = default!;
+    private LineChartOptions lineChartOptions = default!;
+    private ChartData chartData = default!;
+
+    //piechart stuff
+    private DateTime currentMonth = new DateTime(2022, 5, 1);
+    private PieChart pieChart = default!;
+    private PieChartOptions pieChartOptions = default!;
+    private ChartData pieChartData = default!;
+    private List<IChartDataset> pieChartDatasets = new List<IChartDataset>();
+
+    private List<string> backgroundColors;
+    private int datasetsCount = 0;
+    private List<string> labels = new List<string>();
+    private List<string> pieLabels = new List<string>();
+    
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GenerateQueryDataAsync();
+        await GenerateMonthlyAverageDataAsync();
+        await CreatePieChart();
+    }
+
+    private async Task GenerateQueryDataAsync()
+    {
+
+        // <get_database>
+        Database database = client.GetDatabase("VoC");
+        // </get_database>
+        database = await database.ReadAsync();
+        // <get_container>
+        Container topicContainer = database.GetContainer("topics");
+        // </get_container>
+        topicContainer = await topicContainer.ReadContainerAsync();   
+        Container commentContainer = database.GetContainer("comments");
+        commentContainer = await commentContainer.ReadContainerAsync();
+
+        // <query_items>
+        var query = new QueryDefinition($"SELECT * FROM c WHERE c.TopicName = @topicName")
+        .WithParameter("@topicName", TopicName);
+
+        using FeedIterator<Comment> feed = commentContainer.GetItemQueryIterator<Comment>(
+            queryDefinition: query
+        );
+
+        // <parse_results>
+        while (feed.HasMoreResults)
+        {
+            FeedResponse<Comment> response = await feed.ReadNextAsync();
+            foreach (Comment comment in response)
+            {
+                comments.Add(comment);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task GenerateMonthlyAverageDataAsync()
+    {
+        // Group comments by month and calculate average score
+        var monthlyAverages = comments
+                                .GroupBy(c => new { c.Startdate.Year, c.Startdate.Month })
+                                .Select(group => new 
+                                {
+                                    YearMonth = new DateTime(group.Key.Year, group.Key.Month, 1),
+                                    AverageScore = group.Average(c => c.Score)
+                                })
+                                .OrderBy(x => x.YearMonth)
+                                .ToList();
+
+        // Prepare data for the chart
+        var labels = monthlyAverages.Select(x => x.YearMonth.ToString("MMM yyyy")).ToList();
+        var data = monthlyAverages.Select(x => x.AverageScore).ToList();
+
+        // Construct datasets for the chart
+        var dataset = new LineChartDataset
+                    {
+                        Label = "Average Score",
+                        Data = data,
+                        BackgroundColor = new List<string> { "#4dc9f6" }, // choose your color
+                        BorderColor = new List<string> { "#4dc9f6" },
+                        BorderWidth = new List<double> { 2 },
+                        HoverBorderWidth = new List<double> { 4 },
+                        PointBackgroundColor = new List<string> { "#4dc9f6" },
+                        PointRadius = new List<int> { 4 },
+                        PointHoverRadius = new List<int> { 6 }
+                    };
+
+        var datasets = new List<IChartDataset> { dataset };
+
+        chartData = new ChartData
+                    {
+                        Labels = labels,
+                        Datasets = datasets
+                    };
+
+        lineChartOptions = new();
+        lineChartOptions.Responsive = true;
+        lineChartOptions.Interaction = new Interaction { Mode = InteractionMode.Index };
+
+        lineChartOptions.Scales.X.Title.Text = "Date";
+        lineChartOptions.Scales.X.Title.Display = true;
+
+        lineChartOptions.Scales.Y.Title.Text = "Monthly average score";
+        lineChartOptions.Scales.Y.Title.Display = true;
+
+        lineChartOptions.Plugins.Title.Text = TopicName;
+        lineChartOptions.Plugins.Title.Display = true;
+
+        await lineChart.InitializeAsync(chartData, lineChartOptions);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    //piechart logic
+
+    private async Task CreatePieChart()
+    {
+        var dataset = GeneratePieChartDatasetForMonth();
+        pieChartDatasets.Add(dataset);
+        //piechart stuff
+        pieChartData = new ChartData { Labels = pieLabels, Datasets = pieChartDatasets };
+
+        pieChartOptions = new();
+        pieChartOptions.Responsive = true;
+        pieChartOptions.Plugins.Title.Display = true;
+        pieChartOptions.Plugins.Title.Text = $"Score Distribution";
+        pieChartOptions.Plugins.Legend.Position = "top";
+        await pieChart.InitializeAsync(pieChartData, pieChartOptions);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ChangeMonth(int monthDelta)
+    {
+        currentMonth = currentMonth.AddMonths(monthDelta);
+        await UpdatePieChartData();
+    }
+
+    private PieChartDataset GeneratePieChartDatasetForMonth()
+    {
+        pieLabels.Clear();
+        int dataLabelsCount = 0;
+        // Filter comments for the current month and year
+        var filteredComments = comments.Where(c => c.Startdate.Month == currentMonth.Month && c.Startdate.Year == currentMonth.Year);
+        // Group by score and count
+        var scoreCounts = filteredComments
+        .GroupBy(c => c.Score)
+        .ToDictionary(g => g.Key, g => g.Count());
+
+        // Generate labels
+        var data = new List<double>();
+        foreach (var score in scoreCounts.Keys.OrderBy(k => k))
+        {
+            pieLabels.Add(score.ToString());
+            data.Add(scoreCounts[score]);
+        }
+        backgroundColors = GenerateGradientColors(scoreCounts.Count);
+
+        // Create the dataset
+        var dataset = new PieChartDataset
+        {
+            Label = $"Score Distribution for {currentMonth.ToString("MMMM yyyy")}",
+            Data = data,
+            BackgroundColor = backgroundColors
+        };
+
+        dataLabelsCount += 1;
+        return dataset;
+    }
+
+    private async Task UpdatePieChartData()
+    {
+        var dataset = GeneratePieChartDatasetForMonth();
+        
+        // Reset the datasets for the pie chart
+        pieChartDatasets.Clear();
+        pieChartDatasets.Add(dataset);
+
+        // Update the chart labels to reflect the selected month
+        pieChartData.Labels = pieLabels; // Adjust according to your data
+
+        // Update the chart with the new data
+        pieChartData.Datasets = pieChartDatasets;
+
+        // Reinitialize or refresh the chart to display the new data
+        await pieChart.UpdateAsync(pieChartData, pieChartOptions);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private List<string> GenerateLabels(Dictionary<int, int> scoreCounts)
+    {
+        // Create a list of labels based on the keys of the scoreCounts dictionary
+        var labels = scoreCounts.Keys.OrderBy(score => score).Select(score => $"Score {score}").ToList();
+        return labels;
+    }
+
+    private List<string> GenerateGradientColors(int count)
+    {
+        var colors = new List<string>();
+        for (int i = 0; i < count; i++)
+        {
+            float ratio = i / (float)(count - 1);
+            int red = (int)(255 * (1 - ratio));
+            int blue = (int)(255 * ratio);
+            string hexColor = $"#{red:X2}00{blue:X2}";
+            colors.Add(hexColor);
+        }
+    return colors;
+    }
+}

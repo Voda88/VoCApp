@@ -1,0 +1,71 @@
+@page "/topics"
+@inject CosmosClient client
+@using System.Text
+
+@foreach (var topic in topics)
+{
+    <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px;">
+        <a href="TopicDetails/@topic.Name">
+            <h3>@topic.Name</h3>
+        </a>
+        <p style="margin-bottom: 0; padding-bottom: 5px; border-bottom: 1px solid #ddd;">Average Score: @topic.AggregateScore</p>
+        <div style="padding-top: 10px;">
+            <p>count: @topic.Count</p>
+        </div>
+    </div>
+}
+
+
+<footer class="fixed-bottom bg-secondary bg-body-secondary border">
+    <small class="px-5 fw-light fst-italic">
+        <strong>
+            ENDPOINT:
+        </strong>
+        @client.Endpoint
+    </small>
+</footer>
+
+
+@code {
+    private List<Topic> topics = new List<Topic>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GenerateQueryDataAsync();
+    }
+
+    private async Task GenerateQueryDataAsync()
+    {
+
+        // <get_database>
+        Database database = client.GetDatabase("VoC");
+        // </get_database>
+        database = await database.ReadAsync();
+        // <get_container>
+        Container topicContainer = database.GetContainer("topics");
+        // </get_container>
+        topicContainer = await topicContainer.ReadContainerAsync();   
+        Container commentContainer = database.GetContainer("comments");
+        commentContainer = await commentContainer.ReadContainerAsync();
+
+        // <query_items>
+        var query = new QueryDefinition(
+            query: "SELECT * FROM topics t ORDER BY t.Count DESC"
+        );
+
+        using FeedIterator<Topic> feed = topicContainer.GetItemQueryIterator<Topic>(
+            queryDefinition: query
+        );
+
+        // <parse_results>
+        while (feed.HasMoreResults)
+        {
+            FeedResponse<Topic> response = await feed.ReadNextAsync();
+            foreach (Topic topic in response)
+            {
+                topics.Add(topic);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+}
